@@ -83,6 +83,7 @@ app.MapPost("/sign", async (IFormFile? pdf, HttpRequest request, RsaService rsa)
         tamano_bytes = pdf_bytes.Length
     });
 }).WithTags("Firma").DisableAntiforgery();
+
 // ── Verificar PDF ─────────────────────────────────────────
 app.MapPost("/verify", async (IFormFile? pdf, HttpRequest request, RsaService rsa) =>
 {
@@ -110,4 +111,5 @@ app.MapPost("/verify", async (IFormFile? pdf, HttpRequest request, RsaService rs
         algoritmo = "RSA-2048 SHA-256 PKCS1"
     });
 }).WithTags("Firma").DisableAntiforgery();
+
 app.Run();

@@ -8,20 +8,16 @@ public class RsaService
 
     public RsaService(IConfiguration config)
     {
-        _rsa = RSA.Create();
+        _rsa = RSA.Create(2048);
 
         var private_key = config["Rsa:PrivateKey"];
-        var public_key  = config["Rsa:PublicKey"];
 
-        if (!string.IsNullOrEmpty(private_key) && !string.IsNullOrEmpty(public_key))
+        if (!string.IsNullOrEmpty(private_key))
         {
             _rsa.ImportRSAPrivateKey(Convert.FromBase64String(private_key), out _);
         }
-        else
-        {
-            // Si no hay claves configuradas, genera un par nuevo
-            // Esto solo pasa en desarrollo — en Railway siempre deben estar configuradas
-        }
+        // Si no hay clave configurada, usa la que se generó automáticamente
+        // Esto solo pasa en desarrollo local
     }
 
     public string FirmarBytes(byte[] contenido)
