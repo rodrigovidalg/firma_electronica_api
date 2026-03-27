@@ -11,12 +11,23 @@ builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 // ── PostgreSQL ────────────────────────────────────────────
 var connection_string = builder.Configuration.GetConnectionString("default_connection");
 
-// Railway inyecta DATABASE_URL — si no hay connection string configurada, lo leemos directo
 if (string.IsNullOrEmpty(connection_string))
     connection_string = Environment.GetEnvironmentVariable("DATABASE_URL");
 
 if (string.IsNullOrEmpty(connection_string))
     throw new InvalidOperationException("❌ No se encontró connection string para PostgreSQL.");
+
+// Railway da la URL en formato postgresql:// — Npgsql necesita convertirla
+if (connection_string.StartsWith("postgresql://") || connection_string.StartsWith("postgres://"))
+{
+    var uri     = new Uri(connection_string);
+    var user    = uri.UserInfo.Split(':')[0];
+    var pass    = uri.UserInfo.Split(':')[1];
+    var host    = uri.Host;
+    var db_port = uri.Port;
+    var db_name = uri.AbsolutePath.TrimStart('/');
+    connection_string = $"Host={host};Port={db_port};Database={db_name};Username={user};Password={pass};SSL Mode=Require;Trust Server Certificate=true;";
+}
 
 builder.Services.AddDbContext<FirmaDbContext>(options =>
     options.UseNpgsql(connection_string));
@@ -49,7 +60,7 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<FirmaDbContext>();
-    db.Database.EnsureCreated(); // Crea la tabla si no existe
+    db.Database.EnsureCreated();
 }
 
 app.UseCors("allow_all");
@@ -79,8 +90,6 @@ app.MapGet("/public-key", (RsaService rsa) =>
 }).WithTags("Firma");
 
 // ── Firmar PDF ────────────────────────────────────────────
-// El consumidor manda solo el PDF.
-// La API firma, guarda hash→firma en BD y confirma.
 app.MapPost("/sign", async (HttpRequest request, RsaService rsa, FirmaDbContext db) =>
 {
     var api_key  = request.Headers["X-Api-Key"].ToString();
@@ -136,8 +145,6 @@ app.MapPost("/sign", async (HttpRequest request, RsaService rsa, FirmaDbContext 
 }).WithTags("Firma").DisableAntiforgery();
 
 // ── Verificar PDF ─────────────────────────────────────────
-// El consumidor manda SOLO el PDF.
-// La API busca la firma en BD y verifica con RSA.
 app.MapPost("/verify", async (HttpRequest request, RsaService rsa, FirmaDbContext db) =>
 {
     var form = await request.ReadFormAsync();
@@ -165,7 +172,7 @@ app.MapPost("/verify", async (HttpRequest request, RsaService rsa, FirmaDbContex
         });
     }
 
-    // Verificar con RSA que la firma del registro corresponde a este PDF
+    // Verificar con RSA que la firma corresponde a este PDF
     var es_valido = rsa.VerificarFirma(pdf_bytes, registro.firma);
 
     return Results.Ok(new
