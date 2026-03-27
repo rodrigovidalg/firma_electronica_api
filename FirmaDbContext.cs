@@ -2,14 +2,24 @@ using Microsoft.EntityFrameworkCore;
 
 namespace firma_electronica_api;
 
-// ── Entidad ───────────────────────────────────────────────
+// ── Entidad: firmas ───────────────────────────────────────
 public class FirmaRegistrada
 {
-    public int    id       { get; set; }  // SERIAL PRIMARY KEY
-    public string hash_pdf { get; set; } = string.Empty; // SHA-256 del PDF (UNIQUE)
-    public string firma    { get; set; } = string.Empty; // Firma RSA en base64
-    public string cliente  { get; set; } = string.Empty; // API Key que la generó (primeros 8 chars)
-    public DateTime fecha  { get; set; } = DateTime.UtcNow;
+    public int      id       { get; set; }
+    public string   hash_pdf { get; set; } = string.Empty;
+    public string   firma    { get; set; } = string.Empty;
+    public string   cliente  { get; set; } = string.Empty;
+    public DateTime fecha    { get; set; } = DateTime.UtcNow;
+}
+
+// ── Entidad: clientes ─────────────────────────────────────
+public class ClienteApi
+{
+    public int      id             { get; set; }
+    public string   nombre         { get; set; } = string.Empty;
+    public string   api_key        { get; set; } = string.Empty;
+    public bool     activo         { get; set; } = true;
+    public DateTime fecha_creacion { get; set; } = DateTime.UtcNow;
 }
 
 // ── DbContext ─────────────────────────────────────────────
@@ -17,7 +27,8 @@ public class FirmaDbContext : DbContext
 {
     public FirmaDbContext(DbContextOptions<FirmaDbContext> options) : base(options) { }
 
-    public DbSet<FirmaRegistrada> firmas { get; set; } = null!;
+    public DbSet<FirmaRegistrada> firmas   { get; set; } = null!;
+    public DbSet<ClienteApi>      clientes { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -29,7 +40,17 @@ public class FirmaDbContext : DbContext
             e.HasIndex(f => f.hash_pdf).IsUnique();
             e.Property(f => f.hash_pdf).IsRequired().HasMaxLength(64);
             e.Property(f => f.firma).IsRequired();
-            e.Property(f => f.cliente).HasMaxLength(20);
+            e.Property(f => f.cliente).HasMaxLength(100);
+        });
+
+        modelBuilder.Entity<ClienteApi>(e =>
+        {
+            e.ToTable("clientes_api");
+            e.HasKey(c => c.id);
+            e.Property(c => c.id).UseIdentityAlwaysColumn();
+            e.HasIndex(c => c.api_key).IsUnique();
+            e.Property(c => c.nombre).IsRequired().HasMaxLength(100);
+            e.Property(c => c.api_key).IsRequired().HasMaxLength(64);
         });
     }
 }

@@ -17,7 +17,6 @@ if (string.IsNullOrEmpty(connection_string))
 if (string.IsNullOrEmpty(connection_string))
     throw new InvalidOperationException("❌ No se encontró connection string para PostgreSQL.");
 
-// Railway da la URL en formato postgresql:// — Npgsql necesita convertirla
 if (connection_string.StartsWith("postgresql://") || connection_string.StartsWith("postgres://"))
 {
     var uri     = new Uri(connection_string);
@@ -47,11 +46,24 @@ builder.Services.AddSwaggerGen(c =>
     {
         Title       = "UMG Firma Electronica API",
         Version     = "v1",
-        Description = "Microservicio de firma electronica avanzada RSA-2048 — UMG Basic Rover 2.0-2026"
+        Description = """
+            ## Microservicio de Firma Electrónica Avanzada RSA-2048
+
+            ### Endpoints públicos
+            - `POST /verify` — Verificar autenticidad de un PDF (no requiere key)
+            - `GET /public-key` — Obtener clave pública RSA
+
+            ### Endpoints para clientes registrados
+            - `POST /sign` — Firmar un PDF (requiere `X-Api-Key`)
+
+            ### Endpoints de administración
+            - `GET /clients` — Listar clientes (requiere `X-Admin-Key`)
+            - `POST /clients` — Crear cliente nuevo (requiere `X-Admin-Key`)
+            - `DELETE /clients/{id}` — Revocar cliente (requiere `X-Admin-Key`)
+            """
     });
 });
 
-// ── RsaService (Singleton — la clave privada no cambia) ───
 builder.Services.AddSingleton<RsaService>();
 
 var app = builder.Build();
@@ -70,6 +82,20 @@ app.UseSwaggerUI(c =>
     c.SwaggerEndpoint("/swagger/v1/swagger.json", "UMG Firma Electronica API v1");
     c.RoutePrefix = "swagger";
 });
+
+// ── Helpers ───────────────────────────────────────────────
+bool EsAdmin(HttpRequest req)
+{
+    var admin_key = req.Headers["X-Admin-Key"].ToString();
+    var expected  = builder.Configuration["Admin:Key"] ?? "";
+    return !string.IsNullOrEmpty(expected) && admin_key == expected;
+}
+
+async Task<bool> EsClienteValido(string api_key, FirmaDbContext db)
+{
+    if (string.IsNullOrEmpty(api_key)) return false;
+    return await db.clientes.AnyAsync(c => c.api_key == api_key && c.activo);
+}
 
 // ── Health check ──────────────────────────────────────────
 app.MapGet("/health", () => Results.Ok(new
@@ -92,10 +118,9 @@ app.MapGet("/public-key", (RsaService rsa) =>
 // ── Firmar PDF ────────────────────────────────────────────
 app.MapPost("/sign", async (HttpRequest request, RsaService rsa, FirmaDbContext db) =>
 {
-    var api_key  = request.Headers["X-Api-Key"].ToString();
-    var expected = builder.Configuration["Api:Key"] ?? "dev-key";
+    var api_key = request.Headers["X-Api-Key"].ToString();
 
-    if (api_key != expected)
+    if (!await EsClienteValido(api_key, db))
         return Results.Unauthorized();
 
     var form = await request.ReadFormAsync();
@@ -107,10 +132,8 @@ app.MapPost("/sign", async (HttpRequest request, RsaService rsa, FirmaDbContext 
     using var ms = new MemoryStream();
     await pdf.CopyToAsync(ms);
     var pdf_bytes = ms.ToArray();
+    var hash_pdf  = RsaService.ComputarHashPdf(pdf_bytes);
 
-    var hash_pdf = RsaService.ComputarHashPdf(pdf_bytes);
-
-    // Si ya existe una firma para este PDF exacto, la reutilizamos
     var existente = await db.firmas.FirstOrDefaultAsync(f => f.hash_pdf == hash_pdf);
     if (existente != null)
     {
@@ -123,14 +146,18 @@ app.MapPost("/sign", async (HttpRequest request, RsaService rsa, FirmaDbContext 
         });
     }
 
-    // Firmar y guardar en BD
     var firma = rsa.FirmarBytes(pdf_bytes);
+
+    var cliente_nombre = await db.clientes
+        .Where(c => c.api_key == api_key)
+        .Select(c => c.nombre)
+        .FirstOrDefaultAsync() ?? api_key[..Math.Min(8, api_key.Length)];
 
     db.firmas.Add(new FirmaRegistrada
     {
         hash_pdf = hash_pdf,
         firma    = firma,
-        cliente  = api_key.Length >= 8 ? api_key[..8] : api_key,
+        cliente  = cliente_nombre,
         fecha    = DateTime.UtcNow
     });
     await db.SaveChangesAsync();
@@ -156,10 +183,8 @@ app.MapPost("/verify", async (HttpRequest request, RsaService rsa, FirmaDbContex
     using var ms = new MemoryStream();
     await pdf.CopyToAsync(ms);
     var pdf_bytes = ms.ToArray();
+    var hash_pdf  = RsaService.ComputarHashPdf(pdf_bytes);
 
-    var hash_pdf = RsaService.ComputarHashPdf(pdf_bytes);
-
-    // Buscar firma en BD por hash del PDF
     var registro = await db.firmas.FirstOrDefaultAsync(f => f.hash_pdf == hash_pdf);
 
     if (registro is null)
@@ -172,7 +197,6 @@ app.MapPost("/verify", async (HttpRequest request, RsaService rsa, FirmaDbContex
         });
     }
 
-    // Verificar con RSA que la firma corresponde a este PDF
     var es_valido = rsa.VerificarFirma(pdf_bytes, registro.firma);
 
     return Results.Ok(new
@@ -186,4 +210,80 @@ app.MapPost("/verify", async (HttpRequest request, RsaService rsa, FirmaDbContex
     });
 }).WithTags("Firma").DisableAntiforgery();
 
+// ════════════════════════════════════════════════════════
+//  ADMIN — Gestión de clientes
+// ════════════════════════════════════════════════════════
+
+app.MapGet("/clients", async (HttpRequest request, FirmaDbContext db) =>
+{
+    if (!EsAdmin(request)) return Results.Unauthorized();
+
+    var clientes = await db.clientes
+        .OrderByDescending(c => c.fecha_creacion)
+        .Select(c => new
+        {
+            c.id,
+            c.nombre,
+            api_key_preview = c.api_key.Substring(0, 8) + "...",
+            c.activo,
+            c.fecha_creacion
+        })
+        .ToListAsync();
+
+    return Results.Ok(new { total = clientes.Count, clientes });
+}).WithTags("Admin");
+
+app.MapPost("/clients", async (HttpRequest request, FirmaDbContext db) =>
+{
+    if (!EsAdmin(request)) return Results.Unauthorized();
+
+    var body = await request.ReadFromJsonAsync<CrearClienteRequest>();
+    if (body is null || string.IsNullOrWhiteSpace(body.nombre))
+        return Results.BadRequest(new { error = "El nombre del cliente es requerido." });
+
+    var nueva_key = Convert.ToHexString(
+        System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)
+    ).ToLower();
+
+    var cliente = new ClienteApi
+    {
+        nombre         = body.nombre.Trim(),
+        api_key        = nueva_key,
+        activo         = true,
+        fecha_creacion = DateTime.UtcNow
+    };
+
+    db.clientes.Add(cliente);
+    await db.SaveChangesAsync();
+
+    return Results.Ok(new
+    {
+        mensaje        = $"✅ Cliente '{cliente.nombre}' creado correctamente.",
+        id             = cliente.id,
+        nombre         = cliente.nombre,
+        api_key        = nueva_key,
+        fecha_creacion = cliente.fecha_creacion
+    });
+}).WithTags("Admin");
+
+app.MapDelete("/clients/{id:int}", async (int id, HttpRequest request, FirmaDbContext db) =>
+{
+    if (!EsAdmin(request)) return Results.Unauthorized();
+
+    var cliente = await db.clientes.FindAsync(id);
+    if (cliente is null)
+        return Results.NotFound(new { error = "Cliente no encontrado." });
+
+    cliente.activo = false;
+    await db.SaveChangesAsync();
+
+    return Results.Ok(new
+    {
+        mensaje = $"✅ Acceso revocado para cliente '{cliente.nombre}'.",
+        id      = cliente.id
+    });
+}).WithTags("Admin");
+
 app.Run();
+
+record CrearClienteRequest(string nombre);
