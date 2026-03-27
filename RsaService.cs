@@ -8,16 +8,22 @@ public class RsaService
 
     public RsaService(IConfiguration config)
     {
-        _rsa = RSA.Create(2048);
-
         var private_key = config["Rsa:PrivateKey"];
 
-        if (!string.IsNullOrEmpty(private_key))
+        if (string.IsNullOrEmpty(private_key))
+            throw new InvalidOperationException(
+                "❌ Rsa:PrivateKey no está configurada. Agrega la variable de entorno Rsa__PrivateKey en Railway.");
+
+        try
         {
+            _rsa = RSA.Create();
             _rsa.ImportRSAPrivateKey(Convert.FromBase64String(private_key), out _);
         }
-        // Si no hay clave configurada, usa la que se generó automáticamente
-        // Esto solo pasa en desarrollo local
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"❌ No se pudo importar la clave privada RSA: {ex.Message}");
+        }
     }
 
     public string FirmarBytes(byte[] contenido)
@@ -30,7 +36,7 @@ public class RsaService
     {
         try
         {
-            var firma_bytes = Convert.FromBase64String(firma_base64);
+            var firma_bytes = Convert.FromBase64String(firma_base64.Trim());
             return _rsa.VerifyData(contenido, firma_bytes, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
         }
         catch
@@ -42,5 +48,12 @@ public class RsaService
     public string ObtenerClavePublica()
     {
         return Convert.ToBase64String(_rsa.ExportRSAPublicKey());
+    }
+
+    // Calcula el SHA-256 del PDF — es la llave para buscar en BD
+    public static string ComputarHashPdf(byte[] pdf_bytes)
+    {
+        var hash = SHA256.HashData(pdf_bytes);
+        return Convert.ToHexString(hash).ToLower();
     }
 }
