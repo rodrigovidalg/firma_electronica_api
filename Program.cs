@@ -132,42 +132,38 @@ app.MapPost("/sign", async (HttpRequest request, RsaService rsa, FirmaDbContext 
     using var ms = new MemoryStream();
     await pdf.CopyToAsync(ms);
     var pdf_bytes = ms.ToArray();
-    var hash_pdf  = RsaService.ComputarHashPdf(pdf_bytes);
 
+    // Firmar el PDF con certificado X.509 — la firma queda embebida
+    var pdf_firmado = rsa.FirmarPdfConCertificado(pdf_bytes);
+    var hash_pdf    = RsaService.ComputarHashPdf(pdf_firmado);
+
+    // Guardar hash del PDF firmado en BD para verificación
     var existente = await db.firmas.FirstOrDefaultAsync(f => f.hash_pdf == hash_pdf);
-    if (existente != null)
+    if (existente == null)
     {
-        return Results.Ok(new
+        var cliente_nombre = await db.clientes
+            .Where(c => c.api_key == api_key)
+            .Select(c => c.nombre)
+            .FirstOrDefaultAsync() ?? api_key[..Math.Min(8, api_key.Length)];
+
+        db.firmas.Add(new FirmaRegistrada
         {
-            mensaje      = "✅ PDF ya estaba firmado — firma recuperada.",
-            algoritmo    = "RSA-2048 SHA-256 PKCS1",
-            fecha_firma  = existente.fecha,
-            tamano_bytes = pdf_bytes.Length
+            hash_pdf = hash_pdf,
+            firma    = "X509-CMS-EMBEDDED",
+            cliente  = cliente_nombre,
+            fecha    = DateTime.UtcNow
         });
+        await db.SaveChangesAsync();
     }
 
-    var firma = rsa.FirmarBytes(pdf_bytes);
-
-    var cliente_nombre = await db.clientes
-        .Where(c => c.api_key == api_key)
-        .Select(c => c.nombre)
-        .FirstOrDefaultAsync() ?? api_key[..Math.Min(8, api_key.Length)];
-
-    db.firmas.Add(new FirmaRegistrada
-    {
-        hash_pdf = hash_pdf,
-        firma    = firma,
-        cliente  = cliente_nombre,
-        fecha    = DateTime.UtcNow
-    });
-    await db.SaveChangesAsync();
-
+    // Devolver el PDF firmado en base64
     return Results.Ok(new
     {
-        mensaje      = "✅ PDF firmado y registrado correctamente.",
-        algoritmo    = "RSA-2048 SHA-256 PKCS1",
-        fecha_firma  = DateTime.UtcNow,
-        tamano_bytes = pdf_bytes.Length
+        mensaje        = "✅ PDF firmado con certificado X.509 y firma embebida.",
+        algoritmo      = "RSA-2048 SHA-256 CMS X.509",
+        fecha_firma    = DateTime.UtcNow,
+        tamano_bytes   = pdf_firmado.Length,
+        pdf_firmado_b64 = Convert.ToBase64String(pdf_firmado)
     });
 }).WithTags("Firma").DisableAntiforgery();
 
