@@ -69,7 +69,7 @@ public class RsaService
         stamper.SetLocation("Guatemala");
         stamper.SetContact("NextTech Solutions UMG");
         stamper.SetPageNumber(1);
-        stamper.SetPageRect(new iText.Kernel.Geom.Rectangle(36, 748, 300, 800));
+        stamper.SetPageRect(new iText.Kernel.Geom.Rectangle(36, 210, 220, 265));
         stamper.SetFieldName("NextTechSignature");
 
         // Crear la firma
