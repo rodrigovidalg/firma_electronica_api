@@ -66,7 +66,7 @@ public class RsaService
 
         // Apariencia de la firma visible
         stamper.SetReason("UMG Basic Rover 2.0 - 2026");
-        stamper.SetLocation("Guatemala, GT");
+        stamper.SetLocation("Guatemala");
         stamper.SetContact("NextTech Solutions UMG");
         stamper.SetPageNumber(1);
         stamper.SetPageRect(new iText.Kernel.Geom.Rectangle(36, 748, 300, 800));
