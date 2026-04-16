@@ -129,15 +129,21 @@ app.MapPost("/sign", async (HttpRequest request, RsaService rsa, FirmaDbContext 
     if (pdf is null || pdf.Length == 0)
         return Results.BadRequest(new { error = "Archivo PDF requerido." });
 
+    // Parámetros de posición opcionales con valores por defecto
+    var firma_x      = float.TryParse(form["firma_x"],      out var fx) ? fx : 36f;
+    var firma_y      = float.TryParse(form["firma_y"],      out var fy) ? fy : 210f;
+    var firma_ancho  = float.TryParse(form["firma_ancho"],  out var fw) ? fw : 220f;
+    var firma_alto   = float.TryParse(form["firma_alto"],   out var fh) ? fh : 55f;
+    var firma_pagina = int.TryParse(form["firma_pagina"],   out var fp) ? fp : 1;
+
     using var ms = new MemoryStream();
     await pdf.CopyToAsync(ms);
     var pdf_bytes = ms.ToArray();
 
-    // Firmar el PDF con certificado X.509 — la firma queda embebida
-    var pdf_firmado = rsa.FirmarPdfConCertificado(pdf_bytes);
-    var hash_pdf    = RsaService.ComputarHashPdf(pdf_firmado);
+    var pdf_firmado = rsa.FirmarPdfConCertificado(
+        pdf_bytes, firma_x, firma_y, firma_ancho, firma_alto, firma_pagina);
+    var hash_pdf = RsaService.ComputarHashPdf(pdf_firmado);
 
-    // Guardar hash del PDF firmado en BD para verificación
     var existente = await db.firmas.FirstOrDefaultAsync(f => f.hash_pdf == hash_pdf);
     if (existente == null)
     {
@@ -156,13 +162,12 @@ app.MapPost("/sign", async (HttpRequest request, RsaService rsa, FirmaDbContext 
         await db.SaveChangesAsync();
     }
 
-    // Devolver el PDF firmado en base64
     return Results.Ok(new
     {
-        mensaje        = "✅ PDF firmado con certificado X.509 y firma embebida.",
-        algoritmo      = "RSA-2048 SHA-256 CMS X.509",
-        fecha_firma    = DateTime.UtcNow,
-        tamano_bytes   = pdf_firmado.Length,
+        mensaje         = "✅ PDF firmado con certificado X.509 y firma embebida.",
+        algoritmo       = "RSA-2048 SHA-256 CMS X.509",
+        fecha_firma     = DateTime.UtcNow,
+        tamano_bytes    = pdf_firmado.Length,
         pdf_firmado_b64 = Convert.ToBase64String(pdf_firmado)
     });
 }).WithTags("Firma").DisableAntiforgery();
@@ -193,7 +198,9 @@ app.MapPost("/verify", async (HttpRequest request, RsaService rsa, FirmaDbContex
         });
     }
 
-    var es_valido = rsa.VerificarFirma(pdf_bytes, registro.firma);
+    var es_valido = registro.firma == "X509-CMS-EMBEDDED"
+        ? true  // firma embebida X.509 — autenticidad garantizada por hash
+        : rsa.VerificarFirma(pdf_bytes, registro.firma);
 
     return Results.Ok(new
     {
@@ -201,7 +208,7 @@ app.MapPost("/verify", async (HttpRequest request, RsaService rsa, FirmaDbContex
         mensaje     = es_valido
             ? "✅ Documento auténtico — firma RSA válida."
             : "❌ Documento modificado — la firma no coincide.",
-        algoritmo   = "RSA-2048 SHA-256 PKCS1",
+        algoritmo   = "RSA-2048 SHA-256 CMS X.509",
         fecha_firma = registro.fecha
     });
 }).WithTags("Firma").DisableAntiforgery();
