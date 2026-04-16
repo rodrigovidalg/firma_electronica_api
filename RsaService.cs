@@ -67,6 +67,12 @@ public class RsaService
         stamper.SetPageRect(new iText.Kernel.Geom.Rectangle(x, y, x + ancho, y + alto));
         stamper.SetFieldName("NextTechSignature");
 
+        // Apariencia con fuente pequeña — nueva API iText7 v8
+        var firma_appearance = new iText.Forms.Form.Element.SignatureFieldAppearance("NextTechSignature");
+        firma_appearance.SetFontSize(6f);
+        stamper.SetSignatureAppearance(firma_appearance);
+
+        // ← ESTE BLOQUE ES CRÍTICO — firma el PDF
         var signer = new PrivateKeySignature(new PrivateKeyBC(pk), "SHA-256");
         stamper.SignDetached(
             new BouncyCastleDigest(),
