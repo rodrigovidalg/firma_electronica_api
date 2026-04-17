@@ -70,6 +70,12 @@ public class RsaService
 
         // Apariencia con fuente pequeña — nueva API iText7 v8
         var firma_appearance = new iText.Forms.Form.Element.SignatureFieldAppearance("NextTechSignature");
+        firma_appearance.SetContent(
+            "Digitally signed by NextTech Solutions UMG\n" +
+            $"Date: {DateTime.UtcNow:yyyy.MM.dd HH:mm:ss} UTC\n" +
+            "Reason: UMG Basic Rover 2.0 - 2026\n" +
+            "Location: Guatemala"
+        );
         firma_appearance.SetFontSize(font_size);
         stamper.SetSignatureAppearance(firma_appearance);
 
