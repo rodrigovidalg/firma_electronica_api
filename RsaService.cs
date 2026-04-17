@@ -68,6 +68,11 @@ public class RsaService
         stamper.SetPageRect(new iText.Kernel.Geom.Rectangle(x, y, x + ancho, y + alto));
         stamper.SetFieldName("NextTechSignature");
 
+        stamper.GetSignatureAppearance()
+            .SetRenderingMode(PdfSignatureAppearance.RenderingMode.DESCRIPTION);
+        stamper.GetSignatureAppearance()
+            .SetLayer2FontSize(font_size);
+
         var signer = new PrivateKeySignature(new PrivateKeyBC(pk), "SHA-256");
         stamper.SignDetached(
             new BouncyCastleDigest(),
