@@ -71,6 +71,12 @@ public class RsaService
         stamper.GetSignatureAppearance()
             .SetRenderingMode(PdfSignatureAppearance.RenderingMode.DESCRIPTION);
         stamper.GetSignatureAppearance()
+            .SetLayer2Text(
+                $"Digitally signed by NextTech Solutions UMG\n" +
+                $"Date: {DateTime.UtcNow:yyyy.MM.dd HH:mm:ss} UTC\n" +
+                $"Reason: UMG Basic Rover 2.0 - 2026\n" +
+                $"Location: Guatemala");
+        stamper.GetSignatureAppearance()
             .SetLayer2FontSize(font_size);
 
         var signer = new PrivateKeySignature(new PrivateKeyBC(pk), "SHA-256");
