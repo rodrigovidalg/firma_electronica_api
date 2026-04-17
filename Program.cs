@@ -130,18 +130,19 @@ app.MapPost("/sign", async (HttpRequest request, RsaService rsa, FirmaDbContext 
         return Results.BadRequest(new { error = "Archivo PDF requerido." });
 
     // Parámetros de posición opcionales con valores por defecto
-    var firma_x      = float.TryParse(form["firma_x"],      out var fx) ? fx : 36f;
-    var firma_y      = float.TryParse(form["firma_y"],      out var fy) ? fy : 210f;
-    var firma_ancho  = float.TryParse(form["firma_ancho"],  out var fw) ? fw : 220f;
-    var firma_alto   = float.TryParse(form["firma_alto"],   out var fh) ? fh : 55f;
-    var firma_pagina = int.TryParse(form["firma_pagina"],   out var fp) ? fp : 1;
+    var firma_x      = float.TryParse(form["firma_x"],         out var fx) ? fx : 36f;
+    var firma_y      = float.TryParse(form["firma_y"],         out var fy) ? fy : 210f;
+    var firma_ancho  = float.TryParse(form["firma_ancho"],     out var fw) ? fw : 220f;
+    var firma_alto   = float.TryParse(form["firma_alto"],      out var fh) ? fh : 55f;
+    var firma_pagina = int.TryParse(form["firma_pagina"],      out var fp) ? fp : 1;
+    var firma_font   = float.TryParse(form["firma_font_size"], out var ff) ? ff : 7f;
 
     using var ms = new MemoryStream();
     await pdf.CopyToAsync(ms);
     var pdf_bytes = ms.ToArray();
 
     var pdf_firmado = rsa.FirmarPdfConCertificado(
-        pdf_bytes, firma_x, firma_y, firma_ancho, firma_alto, firma_pagina);
+        pdf_bytes, firma_x, firma_y, firma_ancho, firma_alto, firma_pagina, firma_font);
     var hash_pdf = RsaService.ComputarHashPdf(pdf_firmado);
 
     var existente = await db.firmas.FirstOrDefaultAsync(f => f.hash_pdf == hash_pdf);

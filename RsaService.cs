@@ -30,11 +30,12 @@ public class RsaService
 
     public byte[] FirmarPdfConCertificado(
         byte[] pdf_bytes,
-        float x      = 36f,
-        float y      = 210f,
-        float ancho  = 220f,
-        float alto   = 55f,
-        int   pagina = 1)
+        float x         = 36f,
+        float y         = 210f,
+        float ancho     = 220f,
+        float alto      = 55f,
+        int   pagina    = 1,
+        float font_size = 7f)
     {
         var pkcs12 = new Pkcs12StoreBuilder().Build();
         using var pfx_stream = new MemoryStream(_pfx_bytes);
@@ -69,7 +70,7 @@ public class RsaService
 
         // Apariencia con fuente pequeña — nueva API iText7 v8
         var firma_appearance = new iText.Forms.Form.Element.SignatureFieldAppearance("NextTechSignature");
-        firma_appearance.SetFontSize(6f);
+        firma_appearance.SetFontSize(font_size);
         stamper.SetSignatureAppearance(firma_appearance);
 
         // ← ESTE BLOQUE ES CRÍTICO — firma el PDF
