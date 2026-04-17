@@ -68,7 +68,6 @@ public class RsaService
         stamper.SetPageRect(new iText.Kernel.Geom.Rectangle(x, y, x + ancho, y + alto));
         stamper.SetFieldName("NextTechSignature");
 
-        // Sin apariencia personalizada — iText7 la genera automáticamente
         var signer = new PrivateKeySignature(new PrivateKeyBC(pk), "SHA-256");
         stamper.SignDetached(
             new BouncyCastleDigest(),
@@ -78,7 +77,6 @@ public class RsaService
             0,
             PdfSigner.CryptoStandard.CMS
         );
-
 
         return dest_stream.ToArray();
     }
